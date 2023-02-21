@@ -1,0 +1,339 @@
+---
+title: "ps5-rmarkdown-plot"
+output: html_document
+date: "2023-02-20"
+---
+
+### Loading Data
+1, 2, 3)
+```{r}
+library(dplyr)
+library(readr)
+
+df <- read_delim("gapminder.csv.bz2")
+
+# Rows and Columns
+nrow(df)
+ncol(df)
+
+# Small amount of samples
+sample(df, 5)
+```
+The data looks great! It just seems to have a majority of NA values which is an
+indicator that the data is incomplete in a sense.
+
+### Descriptive Statistics
+1)
+``` {r}
+n_distinct(df$iso3, na.rm = TRUE)
+n_distinct(df$iso2, na.rm = TRUE)
+n_distinct(df$name, na.rm = TRUE)
+```
+There is a different count of unique countries, so that means there are some
+countries that are included in one set and not in the other data set. 
+
+2) a) There are no countries that coorespond with multiple names.
+```{r}
+df %>% 
+  group_by(iso2) %>% 
+  summarise(num_names = n_distinct(name)) %>% 
+  arrange(desc(num_names))
+```
+
+2) b) There are no countries that coorespond with multiple names.
+```{r}
+df %>%
+  group_by(iso3) %>%
+  summarize(num_names = n_distinct(name)) %>%
+  arrange(desc(num_names))
+```
+
+3)
+```{r}
+minmax_time <- df %>% 
+  filter(!is.na(time))%>% 
+  reframe(min=min(time), max=max(time))
+
+minmax_time
+
+# For Later 
+time_min <- minmax_time$min
+time_max <- minmax_time$max
+```
+### CO2 Emissions 
+1)
+```{r}
+
+df %>% 
+  filter(!is.na(time))%>%
+  group_by(time) %>% 
+  summarize(co2_nullcount=sum(is.na(co2))) %>% 
+  arrange(desc(co2_nullcount)) %>% 
+  head(5)
+
+df %>% 
+  filter(!is.na(time))%>%
+  group_by(time) %>% 
+  summarize(co2_PC_nullcount=sum(is.na(co2_PC))) %>% 
+  arrange(desc(co2_PC_nullcount)) %>% 
+  head(5)
+
+```
+The years 2017 through 2019 are tied for most missing data, at 217 null count.
+
+2) 
+```{r}
+library(ggplot2)
+
+countries <- c("United States", "China", "India", "Russia", "Brazil", "Germany")
+
+co2_data <- df %>%
+  filter(name == countries[1] |
+         name == countries[2] |
+         name == countries[3] |
+         name == countries[4] |
+         name == countries[5] |
+         name == countries[6], 
+         !is.na(co2))
+
+ggplot(co2_data, aes(x = time, y = co2, color=name)) + 
+  geom_point()
+```
+
+I see China has had a large increase in CO2 emissions since 1960 and has hit an apparent local maximum around 2015.
+I also noticed the US and Russia do not have data being plotted.
+
+3)
+
+```{r}
+library(ggplot2)
+
+countries <- c("United States", "China", "India", "Russia", "Brazil", "Germany")
+
+co2_data <- df %>%
+  filter(name == countries[1] |
+         name == countries[2] |
+         name == countries[3] |
+         name == countries[4] |
+         name == countries[5] |
+         name == countries[6], 
+         !is.na(co2_PC))
+
+ggplot(co2_data, aes(x = time, y = co2_PC, color=name)) + 
+  geom_point()
+```
+
+I still see that China has had a large increase in CO2 emissions per capita in the time period, but I can now also see that Brazil and India had a consistent increase in CO2 emissions per capita during that time as well, and since recording data, Germany has decreased their CO2 emissions per capita. This figure is more effective becasue it measures CO2 emissions per capita, which is a better indicator of overall efficiency.
+
+4)
+``` {r}
+avg_region_co2_PC <- df %>% 
+  filter(!is.na(region),
+         !is.na(time),
+         !is.na(co2_PC)) %>%
+  group_by(region, time) %>% 
+  summarize(co2_PC_mean=mean(co2_PC)) %>% 
+  arrange(region)
+
+avg_region_co2_PC
+```
+  
+I see Americas is 4.8018156, and I also see that the table is hard to read because I have to manually scroll to a specific region and time to see the co2 average. I also see that there is nothing after 2016.
+  
+5) 
+``` {r}
+avg_region_co2_PC_1960_2016 <- avg_region_co2_PC %>% 
+  filter(time == 1960 | time == 2016)
+
+ggplot(avg_region_co2_PC_1960_2016, aes(x = region, y = co2_PC_mean, fill = as.factor(time))) + 
+  geom_bar(stat = "identity", color="black", position = position_dodge(width = 0.8), width = 0.8) + 
+  scale_fill_manual(values = c("darkslateblue", "lightgoldenrod"), name = "Year") + 
+  labs(x = "Continent", y = "Average CO2 emissions per capita", 
+       y = "Average CO2 per Capita")
+```
+
+6) Because 2019 data is missing, I'll take 2016...
+``` {r}
+# Calculate mean CO2 emissions per capita for each country in each continent for the year 2019
+co2_per_capita_2016 <- df %>% 
+  filter(!is.na(region),
+         time == 2016,
+         !is.na(co2_PC)) %>%
+  group_by(name) %>% 
+  summarize(region, name, mean_co2_PC = mean(co2_PC)) %>% 
+  arrange(region, desc(mean_co2_PC))
+
+# Top 3 countries with highest mean co2_PC  for each region
+co2_per_capita_2016 %>%
+  group_by(region) %>%
+  slice_max(mean_co2_PC, n = 3) %>%
+  select(region, name, mean_co2_PC)
+
+# Top 3 countries with lowest mean co2_PC for each region
+co2_per_capita_2016 %>%
+  group_by(region) %>%
+  slice_min(mean_co2_PC, n = 3) %>%
+  select(region, name, mean_co2_PC)
+
+```
+
+# GDP per Capita
+1)
+```{r}
+
+# Filter data for 1960 and remove rows with missing data
+df_1960 <- df %>% 
+  filter(time == 1960, !is.na(GDP_PC) & !is.na(lifeExpectancy))
+
+# Create a ggplot scatterplot
+ggplot(df_1960, aes(x = GDP_PC, y = lifeExpectancy)) +
+  geom_point(aes(size = totalPopulation, color = region)) +
+  scale_x_log10() + 
+  scale_y_log10() +
+  labs(title = "GDP per capita vs. Life expectancy by country (1960)",
+       x = "GDP per capita",
+       y = "Life expectancy")
+```
+
+I see that in 1960, there is a trend where if a country's GDP per capita tends
+toward 0, life expectancy logarithmically decreases to 0.
+
+2)
+```{r}
+
+# Filter data for 2019 and remove rows with missing data
+df_1960 <- df %>% 
+  filter(time == 2019, !is.na(GDP_PC) & !is.na(lifeExpectancy))
+
+# Create a ggplot scatterplot
+ggplot(df_1960, aes(x = GDP_PC, y = lifeExpectancy)) +
+  geom_point(aes(size = totalPopulation, color = region)) +
+  labs(title = "GDP per capita vs. Life expectancy by country (2019)",
+       x = "GDP per capita",
+       y = "Life expectancy")
+```
+
+3) The common correlation between GDP per capita and Life Expectancy has changed between 1960 and 2019, the last 60 years. In 2019, the same correlation between GDP per capita and Life Expectancy can be observed as 1960 between 60 and 75 years of Life Expectancy, but both the GDP per capita and Life Expectancy have gone higher in 2019 by around 15 years and around 30x the GDP.
+
+
+4) 
+```{r}
+avg_life_exp <- df %>% 
+  filter(time %in% c(1960, 2019), !is.na(lifeExpectancy)) %>% 
+  group_by(region, time) %>% 
+  summarize(mean_life_expectancy = mean(lifeExpectancy)) %>% 
+  arrange(region, time)
+
+avg_life_exp
+```
+The figures themselves do not do much justice for each individual region as
+there are no trend lines, but the mean life expectancy difference between 1960
+and 2019 for each continent is consistently growing.
+
+
+5)
+```{r}
+continent_avg_growth <- df %>% 
+  filter(!is.na(region), time %in% c(1960, 2019), !is.na(lifeExpectancy)) %>% 
+  group_by(region) %>% 
+  summarize(avg_growth = (mean(lifeExpectancy[time == 2019]) - 
+                            mean(lifeExpectancy[time == 1960]))/
+                            mean(lifeExpectancy[time == 1960]) * 100) %>% 
+  arrange(region)
+
+continent_avg_growth
+```
+I see that the average growth in the Europe is the least and Africa is the most.
+
+6)
+```{r}
+
+df_1960_2019 <- df %>% filter(time %in% c(1960, 2019))
+
+# Create separate data frames for 1960 and 2019
+df_1960 <- df_1960_2019 %>% filter(time == 1960)
+df_2019 <- df_1960_2019 %>% filter(time == 2019)
+
+# Create a combined histogram using ggplot2
+ggplot() +
+  # Plot the 1960 data as a histogram in red
+  geom_histogram(binwidth = 1000, data = df_1960, aes(x = GDP_PC, fill = "1960"), color = "red") +
+  # Plot the 2019 data as a histogram in blue
+  geom_histogram(binwidth = 1000, data = df_2019, aes(x = GDP_PC, fill = "2019"), color = "blue") +
+  # Set the x-axis label
+  xlab("GDP per capita") +
+  # Set the y-axis label
+  ylab("Frequency") +
+  # Set the legend title
+  labs(fill = "Year") +
+  # Set the title of the plot
+  ggtitle("Histogram of GDP per capita for 1960 and 2019") +
+  # Adjust the legend position
+  theme(legend.position = "top")
+
+
+```
+
+
+7) 
+```{r}
+# 1960
+new_df <- df
+new_df %>% 
+  filter(region != "World", time == 1960, !is.na(lifeExpectancy)) %>%
+  arrange(desc(lifeExpectancy)) %>% 
+  mutate(rank = rank(-lifeExpectancy)) %>% 
+  filter(name == "United States of America") %>% 
+  select(rank)
+
+# 2019
+new_df <- df
+new_df %>% 
+  filter(region != "World", time == 2019, !is.na(lifeExpectancy)) %>%
+  arrange(desc(lifeExpectancy)) %>% 
+  mutate(rank = rank(-lifeExpectancy)) %>% 
+  filter(name == "United States of America") %>% 
+  select(rank)
+```
+
+The US was 17th in 1960 and was 46th in 2019.
+
+8)
+```{r}
+# 1960
+rank_1960 <- df %>% 
+  filter(region != "World", time == 1960, !is.na(lifeExpectancy)) %>%
+  arrange(desc(lifeExpectancy)) %>% 
+  select(name, lifeExpectancy) %>%
+  mutate(rank = rank(-lifeExpectancy)) %>% 
+  filter(name == "United States of America") %>% 
+  pull(rank)
+
+n_1960 <- df %>% 
+  filter(time == 1960, !is.na(lifeExpectancy)) %>% 
+  count()
+
+rel_rank_1960 <- rank_1960 / (n_1960$n - 1)
+rel_rank_1960
+
+# 2019
+rank_2019 <- df %>% 
+  filter(region != "World", time == 2019, !is.na(lifeExpectancy)) %>%
+  arrange(desc(lifeExpectancy)) %>% 
+  select(name, lifeExpectancy) %>%
+  mutate(rank = rank(-lifeExpectancy)) %>% 
+  filter(name == "United States of America") %>% 
+  pull(rank)
+
+n_2019 <- df %>% 
+  filter(time == 2019, !is.na(lifeExpectancy)) %>% 
+  count()
+
+rel_rank_2019 <- rank_2019 / (n_2019$n - 1)
+rel_rank_2019
+
+```
+
+
+### Finally
+This problem set took me 6 hours uninterrupted, about 14 hours interrupted.
